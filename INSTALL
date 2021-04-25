@@ -37,6 +37,9 @@ For autoreconf to succeed, you require the following tools:
 	gettext  (possibly from -dev or -devel package)
 	libtool  (possibly from -dev or -devel package)
 
+install packages:
+apt install build-essential libltdl-dev libusb-dev libexif-dev libpopt-dev libudev-dev pkg-config git automake autoconf autopoint gettext libtool wget
+
 in versions compatible with each other and with libgphoto2. Most
 combinations on current GNU/Linux systems work, whereas BSD systems
 tend to have some compatibility problems.
