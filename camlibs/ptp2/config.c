@@ -1605,12 +1605,96 @@ _put_ExpCompensation(CONFIG_PUT_ARGS) {
 
 /* old method, uses stepping */
 static int
+_get_Sony_EV_index(int value) {
+	int ret=-1;
+	int values[] = {-5000, -4700, -4300, -4000, -3700, -3300, -3000, -2700, -2300, -2000, -1700, -1300, -1000, -700, -300, 0, 
+	300, 700, 1000, 1300, 1700, 2000, 2300, 2700, 3000, 3300, 3700, 4000, 43000, 4700, 5000};
+	int values_len = sizeof(values)/sizeof(int);
+	for (int i=0; i<values_len; i++) {
+		if(value==values[i]){
+			ret = i;
+			break;
+		}
+	}
+	GP_LOG_D("value=(%d), index=(%d)", value, ret);
+	return ret;
+}
+
+static int
 _put_Sony_ExpCompensation(CONFIG_PUT_ARGS) {
 	int ret;
+	GP_LOG_D("start");
 
 	ret = _put_ExpCompensation(CONFIG_PUT_NAMES);
-	if (ret != GP_OK) return ret;
-	return _put_sony_value_i16 (&camera->pl->params, dpd->DevicePropertyCode, propval->i16, 0);
+	// if (ret != GP_OK) return ret;
+	// return _put_sony_value_i16 (&camera->pl->params, dpd->DevicePropertyCode, propval->i16, 0);
+	if (ret == GP_OK)
+	{
+		int16_t value = propval->i16;
+		uint16_t prop = dpd->DevicePropertyCode;
+		PTPParams *params = &camera->pl->params;
+		GPContext *context = ((PTPData *) params->data)->context;
+		PTPDevicePropDesc	dpd1;
+		int target_idx = -1;
+		int current_idx = -1;
+
+		target_idx = _get_Sony_EV_index(value);
+		GP_LOG_D("set 0x%04x to %d(0x%08x), index=%d", prop, value, value, target_idx);
+		
+		C_PTP_REP (ptp_sony_getalldevicepropdesc (params));
+		C_PTP_REP (ptp_generic_getdevicepropdesc (params, prop, &dpd1));
+		current_idx = _get_Sony_EV_index(dpd1.CurrentValue.i16);
+		GP_LOG_D("current value is %d(0x%08x) (idx=%d), target is %d(0x%08x) (idx=%d)", dpd1.CurrentValue.i16, dpd1.CurrentValue.i16, current_idx, value, value, target_idx);
+		if (value == dpd1.CurrentValue.i16) {
+			GP_LOG_D("value is already 0x%08x", value);
+			ret = GP_OK;
+		}
+		else{
+			int delta = 0;
+			PTPPropertyValue	propval;			
+			int done = FALSE;
+			// int steps = 3;
+			while(!done)
+			{
+				if (value>dpd1.CurrentValue.i16)
+				{
+					propval.u8 = 0x01;
+					delta = 1;
+				}
+				else		
+				{	
+					propval.u8 = 0xff;
+					delta = -1;
+				}
+				while (TRUE)
+				{
+					current_idx += delta;
+					C_PTP_REP (ptp_sony_setdevicecontrolvalueb (params, prop, &propval, PTP_DTC_UINT8 ));
+					GP_LOG_D("current index %d, target index is %d", current_idx, target_idx);
+					if (current_idx == target_idx)
+						break;
+					else
+						usleep(200*1000);
+				}
+
+				usleep(1000*1000);
+				C_PTP_REP (ptp_sony_getalldevicepropdesc (params));
+				C_PTP_REP (ptp_generic_getdevicepropdesc (params, prop, &dpd1));
+				current_idx = _get_Sony_EV_index(dpd1.CurrentValue.i16);
+				GP_LOG_D("Check. current value is %d(0x%08x) (idx=%d), target is %d(0x%08x) (idx=%d)", dpd1.CurrentValue.i16, dpd1.CurrentValue.i16, current_idx, value, value, target_idx);
+				if (value == dpd1.CurrentValue.i16) {
+					GP_LOG_D("value is match %d(0x%08x)", dpd1.CurrentValue.i16, dpd1.CurrentValue.i16);
+					ret = GP_OK;
+					done = TRUE;
+				}
+				else{
+					GP_LOG_D("value NOT match %d(0x%08x), target %d(0x%08x)", dpd1.CurrentValue.i16, dpd1.CurrentValue.i16, value, value);
+				}
+			}
+		}
+	}
+	GP_LOG_D("end: ret = %d", ret);
+	return ret;
 }
 
 /* new method, can set directly */
